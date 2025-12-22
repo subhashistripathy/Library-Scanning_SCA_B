@@ -20,7 +20,7 @@ jobs:
 
       # THIS ACTION EXISTS
       - name: Install Snyk CLI
-        uses: snyk/actions/setup@v2
+        uses: snyk/actions/setup@v3
 
       - name: Run Snyk SCA Scan
         env:
