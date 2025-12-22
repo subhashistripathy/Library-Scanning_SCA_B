@@ -39,12 +39,12 @@ jobs:
         run: |
           snyk test --sarif-file-output=snyk.sarif --severity-threshold=high --fail-on=all || echo "Snyk test completed with issues"
         env:
-          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
+          SNYK_TOKEN: c80a2012-bb87-4482-beb5-399c664f183d
 
       - name: Push results to Snyk portal
         run: snyk monitor --all-projects
         env:
-          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
+          SNYK_TOKEN: c80a2012-bb87-4482-beb5-399c664f183d
 
       - name: Upload SARIF to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@v3
