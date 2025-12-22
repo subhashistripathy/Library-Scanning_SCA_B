@@ -55,4 +55,4 @@ jobs:
         run: |
           snyk test --severity-threshold=high --fail-on=all
         env:
-          SNYK_TOKEN: a1eb8b76-9f7f-4ff8-8fcb-e951abcdfa23
+          SNYK_TOKEN: c80a2012-bb87-4482-beb5-399c664f183d
