@@ -1,4 +1,4 @@
-name: Snyk Library Scan (SCA)
+name: Snyk Library Scan (SCA + SARIF)
 
 on:
   push:
@@ -31,14 +31,16 @@ jobs:
           SNYK_TOKEN: c80a2012-bb87-4482-beb5-399c664f183d
         run: snyk auth "$SNYK_TOKEN"
 
-      - name: Run Snyk Dependency Scan (SARIF)
+      # 🔹 Generate SARIF (guaranteed)
+      - name: Run Snyk SCA Scan (Generate SARIF)
         env:
           SNYK_TOKEN: c80a2012-bb87-4482-beb5-399c664f183d
         run: |
-          snyk test --all-projects \
-          --sarif-file-output=snyk.sarif || true
+          snyk test --all-projects --sarif-file-output=snyk.sarif || true
+          ls -l snyk.sarif
 
+      # 🔹 Upload SARIF using v4 (latest)
       - name: Upload SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: snyk.sarif
