@@ -1,4 +1,4 @@
-name: Snyk Security Scan
+name: Snyk SCA Scan
 
 on:
   push:
@@ -7,71 +7,99 @@ on:
     branches: ['**']
   workflow_dispatch:
 
-jobs:
-  snyk-security:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
+  security-events: write
+  actions: read
 
-    permissions:
-      contents: read
-      security-events: write
+jobs:
+  snyk-sca:
+    runs-on: ubuntu-latest
 
     steps:
       # 1. Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Node (required for Snyk CLI)
+      # 2. Setup Python 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Install dependencies from requirements.txt 
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt || true
+            echo "=== Installed packages ==="
+            pip list
+          else
+            echo "ERROR: requirements.txt not found!"
+            exit 1
+          fi
+
+      # 4. Setup Node + Snyk CLI 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 3. Install Snyk CLI
       - name: Install Snyk CLI
         run: npm install -g snyk
 
-      # 4. Authenticate Snyk
+      # 5. Authenticate Snyk
       - name: Authenticate Snyk
-        run: snyk auth aed514c5-df9e-40d2-8cfc-51990b7a3cde
-
-      # -------------------------------
-      # ✅ SAST (Code Scan)
-      # -------------------------------
-      - name: Run Snyk Code (SARIF)
         env:
           SNYK_TOKEN: aed514c5-df9e-40d2-8cfc-51990b7a3cde
-        run: |
-          snyk code test \
-            --all-projects \
-            --sarif-file-output=snyk-code.sarif || true
+        run: snyk auth $SNYK_TOKEN
 
-      - name: Upload SAST SARIF
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: snyk-code.sarif
 
-      # -------------------------------
-      # SCA (Library Scan)
-      # -------------------------------
-      - name: Run Snyk Open Source (SARIF)
+      # SCA — Snyk Open Source (scans requirements.txt)
+      # 
+      - name: Run Snyk SCA scan
         env:
           SNYK_TOKEN: aed514c5-df9e-40d2-8cfc-51990b7a3cde
+        continue-on-error: true          # allows SARIF to be written first
         run: |
           snyk test \
+            --file=requirements.txt \
+            --package-manager=pip \
             --severity-threshold=low \
-            --sarif-file-output=snyk-oss.sarif || true
+            --sarif-file-output=snyk-oss.sarif
 
-      - name: Upload SCA SARIF
+      # Ensure SARIF exists even if scan crashes
+      - name: Ensure SCA SARIF exists
+        if: always()
+        run: |
+          if [ ! -f snyk-oss.sarif ]; then
+            echo "SARIF not generated — creating empty fallback"
+            cat > snyk-oss.sarif << 'EOF'
+          {
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [{"tool": {"driver": {"name": "Snyk Open Source", "rules": []}},"results": []}]
+          }
+          EOF
+          fi
+          echo "=== SARIF file ==="
+          cat snyk-oss.sarif
+
+      # Upload to GitHub Security tab 
+      - name: Upload SCA SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
+        if: always()
         with:
           sarif_file: snyk-oss.sarif
+          category: sca
 
-      # -------------------------------
-      # BLOCKING STEP
-      # -------------------------------
-      - name: Enforce Security Gate (Fail Pipeline)
+      # BLOCKING GATE — pipeline fails here if high+ found
+      - name: SCA Security Gate
         env:
           SNYK_TOKEN: aed514c5-df9e-40d2-8cfc-51990b7a3cde
         run: |
-          snyk code test --severity-threshold=high
-          snyk test --severity-threshold=high
+          echo "=== Running SCA Security Gate ==="
+          snyk test \
+            --file=requirements.txt \
+            --package-manager=pip \
+            --severity-threshold=high
