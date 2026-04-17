@@ -1,58 +1,77 @@
-name: Python SCA Scan with Snyk
+name: Snyk Security Scan
 
 on:
   push:
-    branches: ["**"]
+    branches: ['**']
   pull_request:
-    branches: ["**"]
-
-permissions:
-  contents: read
-  security-events: write
+    branches: ['**']
+  workflow_dispatch:
 
 jobs:
-  security:
+  snyk-security:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      # 1. Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      # 2. Setup Node (required for Snyk CLI)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '20'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
+      # 3. Install Snyk CLI
       - name: Install Snyk CLI
-        run: |
-          curl -Lo snyk https://static.snyk.io/cli/latest/snyk-linux
-          chmod +x snyk
-          sudo mv snyk /usr/local/bin/
+        run: npm install -g snyk
 
-      - name: Run Snyk test and generate SARIF
-        id: snyk-test
-        run: |
-          snyk test --sarif-file-output=snyk.sarif --severity-threshold=high --fail-on=all || echo "Snyk test completed with issues"
+      # 4. Authenticate Snyk
+      - name: Authenticate Snyk
+        run: snyk auth ${{ secrets.SNYK_TOKEN }}
+
+      # -------------------------------
+      # ✅ SAST (Code Scan)
+      # -------------------------------
+      - name: Run Snyk Code (SARIF)
         env:
           SNYK_TOKEN: aed514c5-df9e-40d2-8cfc-51990b7a3cde
+        run: |
+          snyk code test \
+            --all-projects \
+            --sarif-file-output=snyk-code.sarif || true
 
-      - name: Push results to Snyk portal
-        run: snyk monitor --all-projects
-        env:
-          SNYK_TOKEN: aed514c5-df9e-40d2-8cfc-51990b7a3cde
-
-      - name: Upload SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Upload SAST SARIF
+        uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: snyk.sarif
+          sarif_file: snyk-code.sarif
 
-      - name: Fail job if Snyk found high/critical issues
-        run: |
-          snyk test --severity-threshold=high --fail-on=all
+      # -------------------------------
+      # SCA (Library Scan)
+      # -------------------------------
+      - name: Run Snyk Open Source (SARIF)
         env:
           SNYK_TOKEN: aed514c5-df9e-40d2-8cfc-51990b7a3cde
+        run: |
+          snyk test \
+            --severity-threshold=low \
+            --sarif-file-output=snyk-oss.sarif || true
+
+      - name: Upload SCA SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: snyk-oss.sarif
+
+      # -------------------------------
+      # BLOCKING STEP
+      # -------------------------------
+      - name: Enforce Security Gate (Fail Pipeline)
+        env:
+          SNYK_TOKEN: aed514c5-df9e-40d2-8cfc-51990b7a3cde
+        run: |
+          snyk code test --severity-threshold=high
+          snyk test --severity-threshold=high
