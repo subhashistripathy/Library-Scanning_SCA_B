@@ -32,7 +32,7 @@ jobs:
 
       # 4. Authenticate Snyk
       - name: Authenticate Snyk
-        run: snyk auth ${{ secrets.SNYK_TOKEN }}
+        run: snyk auth aed514c5-df9e-40d2-8cfc-51990b7a3cde
 
       # -------------------------------
       # ✅ SAST (Code Scan)
